@@ -62,6 +62,8 @@ public interface IEnumerator
 
 # Producing an enumerable!
 
+Provide an implementation of `IEnumerable`
+
 +++
 
 ### `Enumerable.Empty<T>()`
@@ -100,9 +102,25 @@ public static class MyEnumerable
 @[7-12] (`IEnumerable` implementation.)
 @[16-24] (`IEnumerator` implementation.)
 
++++
+
+### `IEnumerable` implementations should:
+- Store all the required data to perform the enumeration.
+- Pass this data to all `IEnumerator` instances created.
+- Be immutable!
+
++++
+
+### `IEnumerator` implementations should:
+- Manage state so that enumeration can be performed.
+- Not share state with other instances.
+- Throw `InvalidOperationException` when the collection was modified after the enumerator was created.
+
 ---
 
 # Consuming an enumerable!
+
+Pull values from an `IEnumerable`
 
 +++
 
@@ -152,14 +170,14 @@ public static int MySum(this IEnumerable<int> enumerable)
 ### `foreach` uses 'duck typing'
 
 - Implementation of `IEnumerable` and `IEnumerator` is not mandatory.
-- Looks for a `GetEnumerator` method and `Current` property and `MoveNext` method on the returned type.
+- Looks for a `GetEnumerator()` and then for `Current` and `MoveNext()` on the returned type.
 - If it's a value-type:
 	- It's not boxed!
 	- Methods calls are direct (no virtual calls)!
 
 +++
 
-### `System.Collections.Generic.List<T>`
+#### `System.Collections.Generic.List<T>`
 ```
 public class List<T> : 
 	ICollection<T>, IEnumerable<T>, IEnumerable, IList<T>,
@@ -195,7 +213,9 @@ public class List<T> :
 
 ---
 
-# Projecting an enumerable!
+# Projecting/filtering an enumerable!
+
+An implementation of `IEnumerable` that pulls values from another `IEnumerable`.
 
 +++
 
@@ -253,7 +273,7 @@ public static IEnumerable<int> MyEven(
         - Sets a new value to Current when `MoveNext()` is called.
         - Continues to the next statement.
     - `yield break;`
-        - Exists the enumeration.
+        - Exits the enumeration.
 
 +++
 
@@ -902,6 +922,188 @@ var customer = Customers()
 +++
 
 Only use `Single()` or `SingleOrDefault()` when singularity checking is mandatory!!!
+
++++
+
+**If you want to search, use a data structure that supports it!**
+
+Most commonly used is `Dictionary<T>` but there are others...
+
+---
+
+## IQueryable
+
++++
+
+### IQueryable
+```
+public interface IQueryable : 
+	IEnumerable 
+{
+	Expression Expression { get; }
+	Type ElementType { get; }
+	IQueryProvider Provider { get; }
+}
+
+public interface IQueryable<out T> : 
+	IEnumerable<T>, IQueryable 
+{
+}
+```
+
+@[1-2, 9-10] (Implements `IEnumerable` so LINQ can be used.)
+
++++
+
+`IQueryable` is an enumeration interface that converts the LINQ expression tree into something equivalent that a database can process.
+
++++
+
+Entity Framework, LinqToExcel, LinqToTwitter, LinqToCsv, LINQ-to-BigQuery, LINQ-to-GameObject-for-Unity, ElasticLINQ, GpuLinq 
+
++++
+
+## Entity Framework Core
+
+- object-relational mapping (ORM)
+- “LINQ-to-SQL” - supports LINQ queries on a SQL database engine.
+
++++
+
+```
+using (var db = new BloggingContext())
+{
+    var blogs = db.Blogs
+        .Where(blog => blog.Rating > 3)
+        .OrderByDescending(blog => blog.Rating)
+        .Take(5)
+        .Select(blog => blog.Url);
+
+    Console.WriteLine(blogs.ToSql());
+    Console.WriteLine();
+
+    foreach (var blog in blogs)
+    {
+        Console.WriteLine(blog);
+    }
+}
+```
+
+@[3] (`DbSet<T>` implements the `IQueryable` interface.)
+@[3-7] (LINQ is used to define the query.)
+
++++
+
+### LINQ expression converted to SQL
+```
+SELECT TOP(5) [blog].[Url]
+FROM [Blogs] AS [blog]
+WHERE [blog].[Rating] > 3
+ORDER BY [blog].[Rating] DESC
+```
+
++++
+
+### 'Improper' query projection
+```
+using (var db = new BloggingContext())
+{
+    var blogs = db.Blogs
+        .Where(blog => blog.Rating > 3)
+        .OrderByDescending(blog => blog.Rating)
+        .Take(5)
+        .Select(blog => blog.Url)
+        .ToList();
+
+    Console.WriteLine(blogs.ToSql());
+    Console.WriteLine();
+
+    var urls = blogs
+        .Select(url => $"URL: {url}");
+
+    foreach (var url in urls)
+    {
+        Console.WriteLine(url);
+    }
+}
+```
+
+@[3-8] (Store the result of the query in a `List<T>`.)
+@[13-14] (Projects the `List<T>` elements.)
+
++++
+
+### 'Proper' query projection
+```
+using (var db = new BloggingContext())
+{
+    var blogs = db.Blogs
+        .Where(blog => blog.Rating > 3)
+        .OrderByDescending(blog => blog.Rating)
+        .Take(5)
+        .Select(blog => blog.Url);
+
+    Console.WriteLine(blogs.ToSql());
+    Console.WriteLine();
+
+    var urls = blogs
+    	.AsEnumerable()
+        .Select(url => $"URL: {url}");
+
+    foreach (var url in urls)
+    {
+        Console.WriteLine(url);
+    }
+}
+```
+
+@[12-14] (Projects the query elements directly.)
+@[12-14] (Everything before `AsEnumerable()` is executed by the database.)
+@[12-14] (Everything after `AsEnumerable()` is executed in memory.)
+
++++
+
+### DataStax C# Driver for Apache Cassandra
+
+- Uses CQL for querying.
+- Not all LINQ operations are supported!
+
++++
+
+```
+var clusterBuilder = Cluster.Builder()
+    .AddContactPoint("localhost")
+    .WithPort(9042);
+
+using (var cluster = clusterBuilder.Build())
+using (var session = cluster.Connect("blogging"))
+{
+    var blogsTable = new Table<BlogByRating>(session);
+
+    var blogs = blogsTable
+        .Where(blog => blog.Rating == 3)
+        .Select(blog => blog.Url);
+
+    Console.WriteLine(blogs);
+    Console.WriteLine();
+
+    foreach (var blog in await blogs.ExecuteAsync())
+    {
+	    Console.WriteLine(blog);
+    }
+}
+
+```
+
+@[8] (`CqlQuery<T>` implements the `IQueryable` interface.)
+@[10-12] (LINQ is used to define the query.)
+
++++
+
+### LINQ expression converted to CQL
+```
+SELECT "url" FROM "blogs_by_rating" WHERE "rating" = ?
+```
 
 ---
 
