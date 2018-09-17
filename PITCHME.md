@@ -209,7 +209,8 @@ public class List<T> :
 
 @[5-6, 12-13] (Public `GetEnumerator()` returns the `Enumerator`, not the `IEnumerable`! )
 @[7-10] (`GetEnumerator()` that return `IEnumerable` are implemented explicitly.)
-@[12-13] (`Enumerator` is a value type.)
+@[12-13] (`Enumerator` is a value-type so method calls are more efficient!)
+@[12-13] (**BEWARE:** Value-types are passed-by-copy when used as parameters!)
 
 ---
 
