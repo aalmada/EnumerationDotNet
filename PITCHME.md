@@ -932,6 +932,67 @@ Most commonly used is `Dictionary<T>` but there are others...
 
 ---
 
+## LINQ optimizations
+
++++
+
+### LINQ optimizations
+- Examples shown here are simplified versions.
+- LINQ contains optimizations that result in better complexities, but...
+- Small changes in project may unexpectedly invalidate these... 
+
++++
+
+### LINQ optimizations
+
+```
+public static bool MyMethod(this IEnumerable<int> enumerable) 
+{
+    if(enumerable.Count() == 0)
+    	return false;
+
+    return true;
+}
+
+public static void Main() 
+{
+    var collection = Enumerable.Range(0, 10)
+    	.ToList();
+
+    Console.WriteLine(collection.MyMethod());
+}
+
+```
+
+@[11-12] (Implements `ICollection`.)
+@[3,14] (Complexity O(1).)
++++
+
+### LINQ optimizations
+
+```
+public static bool MyMethod(this IEnumerable<int> enumerable) 
+{
+    if(enumerable.Count() == 0)
+    	return false;
+
+    return true;
+}
+
+public static void Main() 
+{
+    var collection = Enumerable.Range(0, 10)
+    	.ToList();
+
+    Console.WriteLine(collection.MyEven().MyMethod());
+}
+
+```
+
+@[3,14] (No longer implements `ICollection`. Complexity is O(n)!)
+
+---
+
 ## IQueryable
 
 +++
